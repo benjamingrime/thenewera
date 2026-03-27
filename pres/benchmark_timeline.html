@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Model Benchmark Progress</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0f1117;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 30px 40px;
+  }
+  h1 {
+    font-size: 2rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #fff;
+  }
+  .subtitle {
+    font-size: 0.95rem;
+    color: #888;
+    margin-bottom: 30px;
+  }
+  .charts-container {
+    display: flex;
+    gap: 40px;
+    width: 100%;
+    max-width: 1400px;
+  }
+  .chart-panel {
+    flex: 1;
+    background: #181b24;
+    border-radius: 16px;
+    padding: 28px 28px 20px;
+    display: flex;
+    flex-direction: column;
+  }
+  .chart-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin-bottom: 2px;
+    color: #fff;
+  }
+  .chart-desc {
+    font-size: 0.8rem;
+    color: #777;
+    margin-bottom: 16px;
+    line-height: 1.45;
+  }
+  .chart-area {
+    position: relative;
+    height: 340px;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Slider section */
+  .slider-section {
+    width: 100%;
+    max-width: 1400px;
+    margin-top: 28px;
+    background: #181b24;
+    border-radius: 16px;
+    padding: 24px 32px 20px;
+  }
+  .slider-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .slider-label {
+    font-size: 1rem;
+    font-weight: 500;
+  }
+  .date-display {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #6ea8fe;
+    font-variant-numeric: tabular-nums;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: #2a2d3a;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #6ea8fe;
+    border: 3px solid #fff;
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(110,168,254,0.5);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #6ea8fe;
+    border: 3px solid #fff;
+    cursor: pointer;
+  }
+  .tick-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 0.75rem;
+    color: #666;
+  }
+  .controls {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+    justify-content: center;
+  }
+  .controls button {
+    background: #2a2d3a;
+    color: #ccc;
+    border: 1px solid #3a3d4a;
+    border-radius: 8px;
+    padding: 7px 18px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .controls button:hover {
+    background: #3a3d4a;
+    color: #fff;
+  }
+  .controls button.active {
+    background: #6ea8fe;
+    color: #000;
+    border-color: #6ea8fe;
+  }
+
+  /* Example questions */
+  .examples {
+    width: 100%;
+    max-width: 1400px;
+    margin-top: 20px;
+    display: flex;
+    gap: 40px;
+  }
+  .example-box {
+    flex: 1;
+    background: #181b24;
+    border-radius: 16px;
+    padding: 20px 24px;
+  }
+  .example-box h3 {
+    font-size: 0.85rem;
+    color: #6ea8fe;
+    margin-bottom: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .example-box .bench-explain {
+    font-size: 0.82rem;
+    color: #999;
+    margin-bottom: 10px;
+  }
+  .example-box .eq-label {
+    font-size: 0.72rem;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .example-box .eq-text {
+    font-size: 0.85rem;
+    color: #ccc;
+    line-height: 1.5;
+    font-style: italic;
+  }
+
+  /* Human baseline markers */
+  .legend {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    margin-top: 8px;
+    font-size: 0.78rem;
+    color: #888;
+  }
+  .legend span { display: flex; align-items: center; gap: 5px; }
+  .legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+</style>
+</head>
+<body>
+
+<h1>How fast are AI models improving?</h1>
+<p class="subtitle">Drag the slider to reveal each model's score over time</p>
+
+<div class="charts-container">
+  <div class="chart-panel">
+    <div class="chart-title">GPQA Diamond</div>
+    <div class="chart-desc">PhD-level science questions (biology, physics, chemistry)</div>
+    <div class="chart-area"><canvas id="gpqaChart"></canvas></div>
+  </div>
+  <div class="chart-panel">
+    <div class="chart-title">AIME 2024-25</div>
+    <div class="chart-desc">American Invitational Mathematics Examination</div>
+    <div class="chart-area"><canvas id="aimeChart"></canvas></div>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="dot" style="background:#a8d8a8"></span> OpenAI</span>
+  <span><span class="dot" style="background:#f4b183"></span> Anthropic</span>
+  <span><span class="dot" style="background:#a4c8f0"></span> Google DeepMind</span>
+  <span><span class="dot" style="background:rgba(255,255,255,0.25)"></span> Baselines (expert human / random guessing)</span>
+</div>
+
+<div class="slider-section">
+  <div class="slider-header">
+    <span class="slider-label">Timeline</span>
+    <span class="date-display" id="dateDisplay">Mar 2023</span>
+  </div>
+  <input type="range" id="timeSlider" min="0" max="400" value="0">
+  <div class="tick-labels">
+    <span>Mar 2023</span>
+    <span>2024</span>
+    <span>2025</span>
+    <span>Dec 2025</span>
+  </div>
+  <div class="controls">
+    <button id="btnReset">Reset</button>
+    <button id="btnPlay">&#9654; Play</button>
+    <button id="btnRevealAll">Reveal All</button>
+  </div>
+</div>
+
+<div class="examples">
+  <div class="example-box">
+    <h3>GPQA Diamond</h3>
+    <p class="bench-explain">450 challenging multiple choice questions in Biology, Chemistry, and Physics, authored by research-level experts.</p>
+    <p class="eq-label">Example question (molecular biology)</p>
+    <p class="eq-text">&ldquo;A researcher observes that a eukaryotic mRNA transcript undergoes alternative splicing, producing two isoforms. Isoform A includes exon 3, which contains a premature termination codon (PTC). Which of the following best describes the fate of Isoform A and the mechanism involved?&rdquo;<br><br>
+    <span style="color:#666; font-size:0.78rem; font-style:normal;">A) Degraded by nonsense-mediated mRNA decay (NMD) &nbsp; B) Translated into a truncated but functional protein &nbsp; C) Retained in the nucleus by the exon junction complex &nbsp; D) Silenced via RNA interference</span></p>
+  </div>
+  <div class="example-box">
+    <h3>AIME 2024&ndash;25</h3>
+    <p class="bench-explain">45 competition-style maths problems from the American Invitational Mathematics Examination, a prestigious US high-school competition where only the top students qualify to sit the paper.</p>
+    <p class="eq-label">Example question (AIME 2024 II, Problem 10)</p>
+    <p class="eq-text">&ldquo;Find the number of triples of nonnegative integers (a, b, c) satisfying a + b + c = 300 and a&sup2;b + a&sup2;c + b&sup2;a + b&sup2;c + c&sup2;a + c&sup2;b = 6,000,000.&rdquo;</p>
+  </div>
+</div>
+
+<script>
+// ── Data ──
+const gpqaData = [
+  { name: "GPT-4",              date: "2023-03-14", score: 36, org: "openai" },
+  { name: "GPT-4 Turbo",       date: "2023-11-06", score: 42, org: "openai" },
+  { name: "o1-mini",           date: "2024-09-12", score: 62, org: "openai" },
+  { name: "o1",                date: "2024-12-17", score: 77, org: "openai" },
+  { name: "Gemini 2.5 Pro",    date: "2025-03-25", score: 84, org: "google" },
+  { name: "Gemini 3 Pro",      date: "2025-11-18", score: 93, org: "google" },
+];
+
+const aimeData = [
+  { name: "GPT-4",         date: "2023-03-14", score: 1,  org: "openai" },
+  { name: "GPT-4o mini",   date: "2024-07-18", score: 7,  org: "openai" },
+  { name: "o1-mini",       date: "2024-09-12", score: 47, org: "openai" },
+  { name: "o1",            date: "2024-12-17", score: 73, org: "openai" },
+  { name: "o3",            date: "2025-04-16", score: 84, org: "openai" },
+  { name: "GPT-5",         date: "2025-08-07", score: 91, org: "openai" },
+  { name: "GPT-5.2",       date: "2025-12-11", score: 96, org: "openai" },
+];
+
+const orgColors = {
+  openai:    "#a8d8a8",
+  anthropic: "#f4b183",
+  google:    "#a4c8f0",
+};
+
+// ── Time range ──
+const tMin = new Date("2023-02-01").getTime();
+const tMax = new Date("2026-01-15").getTime();
+const tRange = tMax - tMin;
+
+function dateToFrac(d) { return (new Date(d).getTime() - tMin) / tRange; }
+function fracToDate(f) {
+  const d = new Date(tMin + f * tRange);
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return months[d.getMonth()] + " " + d.getFullYear();
+}
+
+// ── Canvas drawing ──
+function drawChart(canvasId, data, cutoffFrac, baselines) {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  // Reset canvas size so it doesn't inflate the parent
+  canvas.style.width = "100%";
+  canvas.style.height = "100%";
+  canvas.width = 0;
+  canvas.height = 0;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+
+  // Margins
+  const ml = 48, mr = 20, mt = 36, mb = 28;
+  const pw = W - ml - mr, ph = H - mt - mb;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = "#2a2d3a";
+  ctx.lineWidth = 1;
+  for (let pct = 0; pct <= 100; pct += 20) {
+    const y = mt + ph - (pct / 100) * ph;
+    ctx.beginPath(); ctx.moveTo(ml, y); ctx.lineTo(ml + pw, y); ctx.stroke();
+    ctx.fillStyle = "#555";
+    ctx.font = "11px 'Segoe UI', sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(pct + "%", ml - 8, y + 4);
+  }
+
+  // Year labels on x-axis
+  ctx.fillStyle = "#555";
+  ctx.font = "11px 'Segoe UI', sans-serif";
+  ctx.textAlign = "center";
+  for (let yr = 2023; yr <= 2026; yr++) {
+    const f = dateToFrac(yr + "-01-01");
+    if (f >= 0 && f <= 1) {
+      ctx.fillText(yr.toString(), ml + f * pw, H - 6);
+      ctx.strokeStyle = "#222";
+      ctx.beginPath();
+      ctx.moveTo(ml + f * pw, mt);
+      ctx.lineTo(ml + f * pw, mt + ph);
+      ctx.stroke();
+    }
+  }
+
+  // Baselines
+  if (baselines) {
+    baselines.forEach(bl => {
+      const y = mt + ph - (bl.value / 100) * ph;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = "rgba(255,255,255,0.25)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(ml, y); ctx.lineTo(ml + pw, y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      ctx.font = "10px 'Segoe UI', sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(bl.label, ml + 4, y - 6);
+    });
+  }
+
+  // Filter visible points
+  const visible = data.filter(d => dateToFrac(d.date) <= cutoffFrac);
+
+  // Draw connecting line
+  if (visible.length > 1) {
+    ctx.strokeStyle = "rgba(255,255,255,0.15)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < visible.length; i++) {
+      const x = ml + dateToFrac(visible[i].date) * pw;
+      const y = mt + ph - (visible[i].score / 100) * ph;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // Draw points and labels
+  visible.forEach((d, i) => {
+    const x = ml + dateToFrac(d.date) * pw;
+    const y = mt + ph - (d.score / 100) * ph;
+    const color = orgColors[d.org];
+
+    // Glow
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, 18);
+    grad.addColorStop(0, color + "55");
+    grad.addColorStop(1, color + "00");
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(x, y, 18, 0, Math.PI * 2); ctx.fill();
+
+    // Dot
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(x, y, 5.5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#0f1117";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Label (always above the point)
+    ctx.fillStyle = "#ddd";
+    ctx.font = "bold 11px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    const lines = d.name.split("\n");
+    const labelOffset = lines.length === 1 ? 22 : 33;
+    lines.forEach((line, li) => {
+      ctx.fillStyle = "#ddd";
+      ctx.font = "bold 11px 'Segoe UI', sans-serif";
+      ctx.fillText(line, x, y - labelOffset + li * 12);
+    });
+    ctx.fillStyle = "#999";
+    ctx.font = "10px 'Segoe UI', sans-serif";
+    ctx.fillText(d.score + "%", x, y - labelOffset + lines.length * 12);
+  });
+}
+
+// ── Slider logic ──
+const slider = document.getElementById("timeSlider");
+const dateDisplay = document.getElementById("dateDisplay");
+
+function update() {
+  const frac = slider.value / 400;
+  dateDisplay.textContent = fracToDate(frac);
+  drawChart("gpqaChart", gpqaData, frac, [
+    { value: 65, label: "Expert human" },
+    { value: 25, label: "Random guessing" },
+  ]);
+  drawChart("aimeChart", aimeData, frac, null);
+}
+
+slider.addEventListener("input", update);
+window.addEventListener("resize", update);
+
+// Play animation
+let playInterval = null;
+document.getElementById("btnPlay").addEventListener("click", function() {
+  if (playInterval) {
+    clearInterval(playInterval);
+    playInterval = null;
+    this.classList.remove("active");
+    this.innerHTML = "&#9654; Play";
+    return;
+  }
+  if (parseInt(slider.value) >= 400) slider.value = 0;
+  this.classList.add("active");
+  this.innerHTML = "&#9646;&#9646; Pause";
+  playInterval = setInterval(() => {
+    slider.value = parseInt(slider.value) + 1;
+    update();
+    if (parseInt(slider.value) >= 400) {
+      clearInterval(playInterval);
+      playInterval = null;
+      document.getElementById("btnPlay").classList.remove("active");
+      document.getElementById("btnPlay").innerHTML = "&#9654; Play";
+    }
+  }, 20);
+});
+
+document.getElementById("btnReset").addEventListener("click", () => {
+  if (playInterval) { clearInterval(playInterval); playInterval = null; }
+  document.getElementById("btnPlay").classList.remove("active");
+  document.getElementById("btnPlay").innerHTML = "&#9654; Play";
+  slider.value = 0;
+  update();
+});
+
+document.getElementById("btnRevealAll").addEventListener("click", () => {
+  if (playInterval) { clearInterval(playInterval); playInterval = null; }
+  document.getElementById("btnPlay").classList.remove("active");
+  document.getElementById("btnPlay").innerHTML = "&#9654; Play";
+  slider.value = 400;
+  update();
+});
+
+// Initial draw
+update();
+</script>
+</body>
+</html>

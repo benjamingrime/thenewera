@@ -82,17 +82,43 @@ a_fit, b_fit = popt
 doubling_time_current = np.log(2) / b_fit  # months
 
 # C. Rubin-Accelerated Trend
-#    Post-Month 78 (Q3 2026 Rubin ships): doubling time halves
-#    Justification in rubin_inflection_analysis.md
+#    Generational capability elasticity: H ~ C^gamma across hardware generations
+#    gamma = 0.48 from o1->o3 ARC-AGI cost data ($3.80 vs $26/task, 37.9 vs 94 min)
+#    Corroborated at 0.454 by arXiv:2511.19492 (Llama/Qwen training-compute regression)
+#    Uncertainty modelled via cost reduction range (3.0x-4.0x), not gamma variation
+#    See rubin_inflection_analysis.md section 3.4
 RUBIN_MONTH = 78  # Q3 2026
-b_rubin = b_fit * 2
+
+# Generational capability elasticity (cross-generation scaling exponent)
+GAMMA = 0.48  # o1->o3 ARC-AGI: log(2.48)/log(6.8); corroborated at 0.454 by arXiv:2511.19492
+
+# Rubin end-to-end inference cost reduction vs Blackwell
+COST_REDUCTION = 3.5      # central (NVIDIA estimate for typical LLM serving)
+COST_REDUCTION_CON = 3.0  # conservative (bandwidth + partial FP4 gains only)
+COST_REDUCTION_OPT = 4.0  # optimistic (full FP4 + NVLink 6 compound gains)
+
+RUBIN_BOOST = COST_REDUCTION ** GAMMA          # ~1.82x
+RUBIN_BOOST_CON = COST_REDUCTION_CON ** GAMMA  # ~1.68x
+RUBIN_BOOST_OPT = COST_REDUCTION_OPT ** GAMMA  # ~1.93x
+
+RUBIN_RAMP = 3.0  # months over which the boost ramps in (smooth adoption)
+
+def _rubin_blend(t):
+    """Sigmoid blend: 0 before Rubin, 1 well after, smooth transition."""
+    return 1.0 / (1.0 + np.exp(-(t - RUBIN_MONTH) / (RUBIN_RAMP / 4)))
 
 def rubin_curve(t):
-    if t <= RUBIN_MONTH:
-        return exp_model(t, a_fit, b_fit)
-    else:
-        y_at_transition = exp_model(RUBIN_MONTH, a_fit, b_fit)
-        return y_at_transition * np.exp(b_rubin * (t - RUBIN_MONTH))
+    """Smooth one-time multiplicative boost around Rubin deployment."""
+    blend = _rubin_blend(t)
+    return exp_model(t, a_fit, b_fit) * (1.0 + blend * (RUBIN_BOOST - 1.0))
+
+def rubin_curve_conservative(t):
+    blend = _rubin_blend(t)
+    return exp_model(t, a_fit, b_fit) * (1.0 + blend * (RUBIN_BOOST_CON - 1.0))
+
+def rubin_curve_optimistic(t):
+    blend = _rubin_blend(t)
+    return exp_model(t, a_fit, b_fit) * (1.0 + blend * (RUBIN_BOOST_OPT - 1.0))
 
 # --- 3. Generate Projections ---
 t_proj = np.linspace(-12, 84, 600)  # Feb 2019 to Dec 2026
@@ -100,11 +126,15 @@ t_proj = np.linspace(-12, 84, 600)  # Feb 2019 to Dec 2026
 y_consensus = np.array([consensus_curve(t) for t in t_proj])
 y_current = exp_model(t_proj, a_fit, b_fit)
 y_rubin = np.array([rubin_curve(t) for t in t_proj])
+y_rubin_con = np.array([rubin_curve_conservative(t) for t in t_proj])
+y_rubin_opt = np.array([rubin_curve_optimistic(t) for t in t_proj])
 
 # Dec 31, 2026 predictions (Month 84)
 pred_consensus = consensus_curve(84)
 pred_current = exp_model(84, a_fit, b_fit)
 pred_rubin = rubin_curve(84)
+pred_rubin_con = rubin_curve_conservative(84)
+pred_rubin_opt = rubin_curve_optimistic(84)
 
 # --- 4. Visualization (METR-style) ---
 # Style: white background, minimal, clean -- matching metr.org charts
@@ -125,10 +155,10 @@ plt.rcParams.update({
 
 fig, ax = plt.subplots(figsize=(14, 9))
 
-# --- Shaded acceleration zone ---
-ax.fill_between(t_proj, y_current, y_rubin,
-                where=(y_rubin > y_current),
-                alpha=0.08, color='#76B900', zorder=1)
+# --- Shaded uncertainty band (conservative to optimistic Rubin) ---
+ax.fill_between(t_proj, y_rubin_con, y_rubin_opt,
+                where=(t_proj > RUBIN_MONTH),
+                alpha=0.12, color='#76B900', zorder=1)
 
 # --- Trend lines ---
 ax.plot(t_proj, y_consensus, '--', color='#BBBBBB', linewidth=1.5, zorder=2,
@@ -136,7 +166,7 @@ ax.plot(t_proj, y_consensus, '--', color='#BBBBBB', linewidth=1.5, zorder=2,
 ax.plot(t_proj, y_current, color='#E8A838', linewidth=2.5, zorder=3,
         label=f'Current Trend ({doubling_time_current:.1f}-month doubling)')
 ax.plot(t_proj, y_rubin, color='#76B900', linewidth=3, zorder=3,
-        label=f'Rubin-Accelerated ({doubling_time_current / 2:.1f}-month doubling post-Q3\'26)')
+        label=f'Rubin-Adjusted ({RUBIN_BOOST:.2f}x boost, \u03b3={GAMMA})')
 
 # --- Rubin vertical marker ---
 ax.axvline(x=RUBIN_MONTH, color='#76B900', linestyle=':', alpha=0.4, linewidth=1, zorder=2)
@@ -176,22 +206,22 @@ for pred_val, color in [
 
 # Prediction callouts -- positioned to avoid overlap
 ax.annotate(
-    f'{pred_rubin:.0f} hrs ({pred_rubin / 24:.0f} days)',
-    xy=(84, pred_rubin), xytext=(-130, 30), textcoords='offset points',
-    fontsize=11, color='#76B900', fontweight='bold',
+    f'{pred_rubin:.0f} hrs ({pred_rubin / 8:.0f} working days)\n',
+    xy=(84, pred_rubin), xytext=(-170, 30), textcoords='offset points',
+    fontsize=10, color='#76B900', fontweight='bold',
     arrowprops=dict(arrowstyle='->', color='#76B900', lw=1.5),
     zorder=6)
 
 ax.annotate(
-    f'{pred_current:.0f} hrs ({pred_current / 24:.1f} days)',
-    xy=(84, pred_current), xytext=(-140, -25), textcoords='offset points',
+    f'{pred_current:.0f} hrs ({pred_current / 8:.0f} working days)',
+    xy=(84, pred_current), xytext=(-160, -25), textcoords='offset points',
     fontsize=10, color='#E8A838', fontweight='bold',
     arrowprops=dict(arrowstyle='->', color='#E8A838', lw=1.2),
     zorder=6)
 
 ax.annotate(
-    f'{pred_consensus:.0f} hrs (1 day)',
-    xy=(84, pred_consensus), xytext=(-110, -22), textcoords='offset points',
+    f'{pred_consensus:.0f} hrs ({pred_consensus / 8:.0f} working days)',
+    xy=(84, pred_consensus), xytext=(-140, -22), textcoords='offset points',
     fontsize=9, color='#999999',
     arrowprops=dict(arrowstyle='->', color='#999999', lw=1),
     zorder=6)
@@ -202,10 +232,10 @@ def format_hours(val, pos):
         return f'{val * 3600:.0f} sec'
     elif val < 1:
         return f'{val * 60:.0f} min'
-    elif val < 24:
+    elif val < 8:
         return f'{val:.0f} hrs'
     else:
-        return f'{val / 24:.0f} days'
+        return f'{val / 8:.0f} days'
 
 ax.yaxis.set_major_formatter(mticker.FuncFormatter(format_hours))
 
@@ -225,12 +255,12 @@ fig.text(0.06, 0.96,
          'Time-horizon of tasks AI can complete at 50% success rate',
          fontsize=15, fontweight='bold', color='#222222', va='top')
 fig.text(0.06, 0.92,
-         'Task duration (for humans)  |  METR TH1.1 data + Rubin acceleration model',
+         'Task duration (for humans)  |  METR TH1.1 data + Rubin power-law boost model',
          fontsize=10, color='#888888', va='top')
 
 # --- Axis limits ---
 ax.set_xlim(-14, 87)
-ax.set_ylim(bottom=0, top=max(pred_rubin, pred_current) * 1.15)
+ax.set_ylim(bottom=0, top=max(pred_rubin_opt, pred_current) * 1.15)
 ax.grid(False)
 
 # Source attribution
@@ -259,10 +289,17 @@ print()
 print(f"Consensus anchored at GPT-5.2 (Dec 2025, {ANCHOR_Y} hrs)")
 print(f"  -> 7-month doubling from current reality, not from GPT-4")
 print()
-print(f"PREDICTIONS FOR DEC 31, 2026 (Month 84):")
-print(f"  Expert Consensus (7-mo doubling):    {pred_consensus:>8.1f} hours ({pred_consensus / 24:.1f} days)")
-print(f"  Current Trend (Blackwell scaling):   {pred_current:>8.1f} hours ({pred_current / 24:.1f} days)")
-print(f"  Rubin-Accelerated (HBM4 + CoDesign): {pred_rubin:>8.1f} hours ({pred_rubin / 24:.1f} days)")
+print(f"Rubin Model (generational capability elasticity):")
+print(f"  Scaling exponent (gamma): {GAMMA} (o1->o3 ARC-AGI, corroborated at 0.454 by arXiv:2511.19492)")
+print(f"  Hardware cost reduction:  {COST_REDUCTION}x (central), [{COST_REDUCTION_CON}x, {COST_REDUCTION_OPT}x]")
+print(f"  One-time boost factor:    {RUBIN_BOOST:.2f}x (central), [{RUBIN_BOOST_CON:.2f}x, {RUBIN_BOOST_OPT:.2f}x]")
+print()
+print(f"PREDICTIONS FOR DEC 31, 2026 (Month 84):  [1 working day = 8 hrs]")
+print(f"  Expert Consensus (7-mo doubling):    {pred_consensus:>8.1f} hours ({pred_consensus / 8:.1f} working days)")
+print(f"  Current Trend (Blackwell scaling):   {pred_current:>8.1f} hours ({pred_current / 8:.1f} working days)")
+print(f"  Rubin-Adjusted (central, 3.5x):     {pred_rubin:>8.1f} hours ({pred_rubin / 8:.1f} working days)")
+print(f"    Conservative (3.0x cost reduction):{pred_rubin_con:>8.1f} hours ({pred_rubin_con / 8:.1f} working days)")
+print(f"    Optimistic   (4.0x cost reduction):{pred_rubin_opt:>8.1f} hours ({pred_rubin_opt / 8:.1f} working days)")
 print()
 print(f"See rubin_inflection_analysis.md for full technical justification.")
 print("=" * 70)
